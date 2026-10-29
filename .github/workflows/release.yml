@@ -43,7 +43,7 @@ jobs:
     permissions:
       contents: write   # only used by the publish step
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # tags and main, to check the release comes from main
 
