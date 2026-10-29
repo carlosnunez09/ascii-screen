@@ -41,7 +41,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1    # copies to %LOCALAPPD
 
 `install.ps1` stops any running copy, installs the files, and creates an **Ascii Screen** desktop shortcut that starts the live wallpaper. It does not change your Windows screensaver setting; to use the screensaver, right-click `AsciiSaver.scr` and choose **Install**.
 
-There are no prebuilt binaries yet. The executables are unsigned, so Windows SmartScreen may warn you if you share a build.
+Prebuilt Windows zips are on the [Releases](../../releases) page once a version is published (see [RELEASING.md](RELEASING.md)). The executables are unsigned, so Windows SmartScreen may warn you.
 
 ## Using it
 
