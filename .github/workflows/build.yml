@@ -36,7 +36,7 @@ jobs:
         continue-on-error: true   # needs a display; informational, the build above is the gate
         run: .\AsciiSaver.scr /test out_smoke.png source=ocean w=1280 h=720 frames=60
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: build-output
