@@ -1,0 +1,151 @@
+name: release
+
+# Every run builds and packages the Windows download, so packaging is always tested.
+# Only a version tag (v0.0.1) or a manual run with "publish" ticked creates a tag and a GitHub release.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/release.yml'
+      - 'build.ps1'
+      - 'install.ps1'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, like 0.0.1 (the release tag will be v0.0.1)'
+        required: true
+        default: '0.0.1'
+      publish:
+        description: 'Publish: create the tag and the GitHub release (off = build and package only)'
+        type: boolean
+        default: false
+      prerelease:
+        description: 'Mark the release as a pre-release'
+        type: boolean
+        default: false
+      draft:
+        description: 'Create the release as a draft to review first'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: windows-latest
+    permissions:
+      contents: write   # only used by the publish step
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tags and main, to check the release comes from main
+
+      - name: Work out the version
+        id: v
+        shell: pwsh
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          $publish = $false
+          if ($env:EVENT -eq 'push') {
+            $tag = $env:GITHUB_REF_NAME
+            $publish = $true
+          } elseif ($env:EVENT -eq 'workflow_dispatch') {
+            $tag = 'v' + $env:INPUT_VERSION.Trim().TrimStart('v')
+            $publish = $env:INPUT_PUBLISH -eq 'true'
+          } else {
+            $tag = 'v0.0.0-test'
+          }
+          if ($tag -notmatch '^v\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$') { throw "Not a valid version tag: $tag" }
+
+          if ($publish) {
+            git fetch origin main
+            git merge-base --is-ancestor HEAD origin/main
+            if ($LASTEXITCODE -ne 0) { throw "Releases must come from a commit on main." }
+            if ($env:EVENT -eq 'workflow_dispatch') {
+              if ($env:GITHUB_REF -ne 'refs/heads/main') { throw "Run this workflow from the main branch." }
+              git rev-parse -q --verify "refs/tags/$tag" | Out-Null
+              if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists. Pick a higher version." }
+            }
+          }
+
+          $pre = ($tag -match '-') -or ($env:INPUT_PRERELEASE -eq 'true')
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "publish=$($publish.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          "prerelease=$($pre.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "version $tag, publish=$publish, prerelease=$pre"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build screensaver, app and settings window
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Package the download
+        id: pkg
+        shell: pwsh
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          foreach ($f in 'AsciiSaver.scr', 'AsciiScreen.exe', 'settings-app/AsciiScreenSettings.exe') {
+            if (-not (Test-Path $f)) { throw "missing build output: $f" }
+          }
+          $name  = "AsciiScreen-$env:TAG-win-x64"
+          $stage = "dist/$name"
+          New-Item -ItemType Directory -Force $stage | Out-Null
+          Copy-Item AsciiScreen.exe, AsciiSaver.scr, app.ico, install.ps1, LICENSE, README.md $stage
+          Copy-Item settings-app "$stage/settings-app" -Recurse
+          Get-ChildItem "$stage/settings-app" -Recurse -Filter *.pdb | Remove-Item -Force
+          Compress-Archive -Path $stage -DestinationPath "dist/$name.zip"
+          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Out-File "dist/$name.zip.sha256" -Encoding ascii
+          Get-ChildItem dist -File | ForEach-Object { Write-Host "$($_.Name)  $($_.Length) bytes" }
+          Write-Host "sha256 $hash"
+          "name=$name" >> $env:GITHUB_OUTPUT
+
+          @"
+          **Windows download:** ``$name.zip``. Unzip it, then run ``install.ps1`` (right-click, Run with PowerShell) to install and get a desktop shortcut. Windows 11 is what it is tested on.
+
+          **Unsigned:** the programs are not code-signed, so Windows SmartScreen may warn you ("More info", then "Run anyway"). Check the download against ``$name.zip.sha256`` (``Get-FileHash`` in PowerShell, SHA-256) and build from source if you prefer.
+
+          ---
+          "@ | Out-File dist/notes.md -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pkg.outputs.name }}
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+      - name: Publish the GitHub release
+        if: steps.v.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          NAME: ${{ steps.pkg.outputs.name }}
+          EVENT: ${{ github.event_name }}
+          PRERELEASE: ${{ steps.v.outputs.prerelease }}
+          DRAFT: ${{ inputs.draft }}
+        run: |
+          $ghArgs = @($env:TAG, "dist/$env:NAME.zip", "dist/$env:NAME.zip.sha256",
+                    '--title', "Ascii Screen $env:TAG", '--notes-file', 'dist/notes.md', '--generate-notes')
+          if ($env:EVENT -eq 'push') { $ghArgs += '--verify-tag' } else { $ghArgs += '--target', $env:GITHUB_SHA }
+          if ($env:PRERELEASE -eq 'true') { $ghArgs += '--prerelease' }
+          if ($env:DRAFT -eq 'true') { $ghArgs += '--draft' }
+          gh release create @args
+          if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }

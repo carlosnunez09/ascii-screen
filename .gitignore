@@ -16,3 +16,6 @@ out_*
 .vs/
 .idea/
 *.user
+
+# release packaging
+dist/
