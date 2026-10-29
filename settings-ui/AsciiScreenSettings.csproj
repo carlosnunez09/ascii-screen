@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>disable</Nullable>
+    <!-- off on purpose: the shared renderer file has its own usings and would clash with the implicit ones -->
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>AsciiScreenSettings</AssemblyName>
+    <RootNamespace>AsciiScreenSettings</RootNamespace>
+    <StartupObject>AsciiScreenSettings.App</StartupObject>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <ApplicationIcon>..\app.ico</ApplicationIcon>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <!-- ThemeMode (the Windows 11 Fluent theme) is still marked experimental in WPF -->
+    <NoWarn>$(NoWarn);WPF0001;CA1416;CS8981;CS0168;CS0219;CS0649;CS0414</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the same renderer and ocean simulation that AsciiScreen.exe uses, for the live preview -->
+    <Compile Include="..\AsciiSaver.cs" Link="Shared\AsciiSaver.cs" />
+    <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
+  </ItemGroup>
+
+</Project>
+

@@ -1,0 +1,48 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build screensaver, app and settings window
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Check the build produced everything
+        shell: pwsh
+        run: |
+          foreach ($f in 'AsciiSaver.scr', 'AsciiScreen.exe', 'settings-app/AsciiScreenSettings.exe') {
+            if (-not (Test-Path $f)) { throw "missing build output: $f" }
+            Write-Host "ok  $f  $((Get-Item $f).Length) bytes"
+          }
+
+      - name: Render a test frame (smoke test)
+        shell: cmd
+        continue-on-error: true   # needs a display; informational, the build above is the gate
+        run: .\AsciiSaver.scr /test out_smoke.png source=ocean w=1280 h=720 frames=60
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-output
+          path: |
+            AsciiSaver.scr
+            AsciiScreen.exe
+            settings-app/
+            out_smoke.png
+          if-no-files-found: ignore

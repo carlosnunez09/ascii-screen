@@ -1,0 +1,18 @@
+# build output
+*.exe
+*.scr
+*.dll
+*.pdb
+obj/
+bin/
+settings-app/
+
+# local test renders and scratch
+out_*
+*.png.txt
+/art/
+/anim/
+/look*/
+.vs/
+.idea/
+*.user
